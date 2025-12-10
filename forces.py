@@ -100,9 +100,6 @@ def evolution_viscous(x0, gamma, dt, duration, R_cargo=50e-9, eta=1e-3):
     for i in range(N - 1):
         f = spring_force(x[i]) + binding_force(x[i]) + F_load
         x[i + 1] = x[i] + c_noise * rn[i] + f*dt/gamma
-        if i % N*0.01 == 0:
-            print ('max time elapsed')
-            print (i/N)
         if abs(x[i+1] - x_eq) < eps:
             stable_counter += 1
         else:
