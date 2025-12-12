@@ -28,8 +28,10 @@ def spring_force(x):
     y = x-8e-9
     return -y*k
 
-def binding_force(x):
-    kBT = 4.11e-21
+def binding_force(x, kBT=4.11e-21):
+    """
+    kBT: Thermal energy [J]. Default corresponds to ~298 K.
+    """
     sigma = 1e-9/2
     xpos = 16e-9
     x = x- xpos
@@ -60,7 +62,7 @@ def cargo_load_force(R_cargo, eta):
 #plt.show()
 
 
-def evolution_viscous(x0, gamma, dt, duration, R_cargo=50e-9, eta=1e-3):
+def evolution_viscous(x0, gamma, dt, duration, R_cargo=50e-9, eta=1e-3, T=298.0):
     """
     Function to generate the solution for the Langevin equation with 
     inertia and cargo load force.
@@ -73,12 +75,14 @@ def evolution_viscous(x0, gamma, dt, duration, R_cargo=50e-9, eta=1e-3):
     duration : Total time for which the solution is computed [s].
     R_cargo : Radius of the cargo [m]. Default: 50e-9 (50 nm). Set to 0 for no cargo.
     eta : Viscosity of medium [Pa*s]. Default: 1e-3 (water).
+    T : Temperature [K]. Default: 298.0 K (room temperature).
     """
     
     # Calculate cargo load force (constant hindering force)
     F_load = cargo_load_force(R_cargo, eta) if R_cargo > 0 else 0
     
-    kBT = 4.11e-21  # kB*T at room temperature [J].
+    kB = 1.38e-23  # Boltzmann constant [J/K]
+    kBT = kB * T  # Thermal energy [J]
     D = kBT / gamma  # Diffusion constant [m^2 / s] (only head, not cargo).
     
     # Coefficients for the finite difference solution.
@@ -95,10 +99,11 @@ def evolution_viscous(x0, gamma, dt, duration, R_cargo=50e-9, eta=1e-3):
     eps = 3e-10
 
     stable_steps_required = int(stable_time / dt)
+    #stable_steps_required = 10
     stable_counter = 0
     
     for i in range(N - 1):
-        f = spring_force(x[i]) + binding_force(x[i]) + F_load
+        f = spring_force(x[i]) + binding_force(x[i], kBT) + F_load
         x[i + 1] = x[i] + c_noise * rn[i] + f*dt/gamma
         if abs(x[i+1] - x_eq) < eps:
             stable_counter += 1

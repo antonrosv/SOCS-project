@@ -15,10 +15,11 @@ gamma = gamma_motor + gamma_cargo  # Total drag coefficient
 
 
 class Head:
-    def __init__(self, nucleotide_state, attached, start_position):
+    def __init__(self, nucleotide_state, attached, start_position, T=298.0):
         self.nucleotide_state = nucleotide_state  # 'ADP', 'ATP', or 'nucleotide-free'
         self.attached = attached  # True if attached to microtubule, False otherwise
         self.position = start_position * 8e-9
+        self.T = T  # Temperature [K]
     def bind_ATP(self):
         if self.nucleotide_state == 'free':
             self.nucleotide_state = 'ATP'
@@ -31,7 +32,7 @@ class Head:
             self.attached = False
     def move(self):
         # Start from current position, not zero
-        x_values, iterations = evolution_viscous(self.position, gamma_motor, dt, duration, R_cargo, eta)
+        x_values, iterations = evolution_viscous(self.position, gamma_motor, dt, duration, R_cargo, eta, self.T)
         # Update position to the final value from the trajectory
         self.position = x_values[-1]
         return x_values, iterations
@@ -45,12 +46,18 @@ def evolution(head_front, head_back, ATP_concentration, downsample_factor=1000):
     With dt=1e-12 and downsample_factor=1000, we save every 1e-9 s.
     """
     time = 0
-    all_x_values = []  # Store all x values (overall motor/cargo position)
+    all_x_values = []  # Store cargo/motor position (shows standing still then stepping)
     all_times = []  # Store corresponding time points
+    search_times = []  # Store the time for each Brownian search phase
     
-    # Track the overall forward position of the motor
-    # This represents the cargo/motor center-of-mass that moves forward
-    overall_position = head_front.position
+    # Track the cargo/motor position - this stays relatively constant during search,
+    # then jumps forward when step completes
+    cargo_position = head_front.position
+    
+    # Get temperature from head (for cargo fluctuations)
+    T = head_front.T
+    kB = 1.38e-23  # Boltzmann constant [J/K]
+    kBT = kB * T
     
     while ATP_concentration >= 1:
         print (ATP_concentration)
@@ -61,26 +68,36 @@ def evolution(head_front, head_back, ATP_concentration, downsample_factor=1000):
             time += wait_time
             head_front.bind_ATP()
 
+            # During this phase, head searches for binding site
+            # Cargo position stays relatively constant (small fluctuations)
             x_values, iterations = head_back.move()
+            
+            # Track the search time (Brownian motion phase)
+            search_time = dt * iterations
+            search_times.append(search_time)
             
             # Downsample to reduce memory usage
             x_values_downsampled = x_values[::downsample_factor]
             # Create time array for this step (downsampled)
             step_times = time + dt * np.arange(len(x_values))[::downsample_factor]
             
-            # For kinesin, each successful step moves forward by 8nm (microtubule periodicity)
-            # Show the forward progress: local Brownian search + overall forward stepping
-            # The local motion is relative to the starting position
-            relative_motion = x_values_downsampled - x_values[0]
-            # Add overall position to show cumulative forward movement
-            forward_trajectory = overall_position + relative_motion
+            # During search phase: cargo stays at current position with small fluctuations
+            # The head searches locally, but cargo (being much larger) doesn't move much
+            # Small fluctuations represent thermal motion of cargo (temperature-dependent)
+            cargo_fluctuation_scale = np.sqrt(kBT / (gamma_cargo * dt * downsample_factor)) * 1e-10
+            small_fluctuations = np.random.normal(0, cargo_fluctuation_scale, len(x_values_downsampled))
+            search_trajectory = cargo_position + small_fluctuations
             
-            all_x_values.extend(forward_trajectory)
+            all_x_values.extend(search_trajectory)
             all_times.extend(step_times)
             
-            # After step completion, motor moves forward by 8nm (typical kinesin step size)
+            # After step completion: cargo jumps forward by 8nm (typical kinesin step size)
             step_size = 8e-9  # 8 nm forward step
-            overall_position += step_size
+            cargo_position += step_size
+            
+            # Add a point showing the jump (instantaneous step)
+            all_x_values.append(cargo_position)
+            all_times.append(time + dt*iterations)
             
             time += dt*iterations
             head_front, head_back = head_back, head_front
@@ -92,24 +109,45 @@ def evolution(head_front, head_back, ATP_concentration, downsample_factor=1000):
             head_front.attach()
 
             ATP_concentration -= 1
-    return time, head_front.position, np.array(all_x_values), np.array(all_times)
+    
+    # Calculate statistics
+    avg_search_time = np.mean(search_times)
+    std_search_time = np.std(search_times)
+    
+    # Return cargo_position (cumulative forward movement), not head_front.position
+    return time, cargo_position, np.array(all_x_values), np.array(all_times), avg_search_time, std_search_time
 
-head_front = Head('free', True, 1)
-head_back = Head('ADP', False, 0)
+# Test different temperatures
+temperatures = [200, 300, 400]  # K
+colors = ['b', 'r', 'g']
+labels = ['T = 200 K', 'T = 300 K', 'T = 400 K']
 
+plt.figure(figsize=(12, 7))
 
-#print(f'tau={tau:.3e} s.') 
+for T, color, label in zip(temperatures, colors, labels):
+    print(f"\n{'='*60}")
+    print(f"Running simulation at T = {T} K...")
+    
+    # Create new heads for each temperature
+    head_front = Head('free', True, 1, T=T)
+    head_back = Head('ADP', False, 0, T=T)
+    
+    time, position, x_values, t_values, avg_search_time, std_search_time = evolution(head_front, head_back, 50)
+    
+    print(f"\nResults for T = {T} K:")
+    print(f"  Final position: {position*1e9:.2f} nm")
+    print(f"  Total time: {time:.3e} s")
+    print(f"  Average velocity: {position*1e9/time:.2f} nm/s")
+    print(f"  Average Brownian search time per step: {avg_search_time:.3e} s ({avg_search_time*1e9:.2f} ns)")
+    print(f"  Standard deviation: {std_search_time:.3e} s ({std_search_time*1e9:.2f} ns)")
+    print(f"  Number of steps: 100")
+    
+    # Plot trajectory for this temperature
+    plt.plot(t_values, x_values*1e9, '-', color=color, linewidth=0.5, label=label, alpha=0.7)
 
-time, position, x_values, t_values = evolution(head_front, head_back, 50)
-print (time, position)
-print (position*1e9/time)
-
-# Plot x values against time
-plt.figure(figsize=(10, 6))
-plt.plot(t_values, x_values, '-', color='b', linewidth=0.5, label='Position trajectory')
-plt.title('Kinesin Position vs Time')
+plt.title('Kinesin Position vs Time at Different Temperatures')
 plt.xlabel('Time (s)')
-plt.ylabel('Position (m)')
+plt.ylabel('Position (nm)')
 plt.grid(True, alpha=0.3)
 plt.legend()
 plt.tight_layout()
