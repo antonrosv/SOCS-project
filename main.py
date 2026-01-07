@@ -18,7 +18,7 @@ class Head:
     def __init__(self, nucleotide_state, attached, start_position, T=298.0):
         self.nucleotide_state = nucleotide_state  # 'ADP', 'ATP', or 'nucleotide-free'
         self.attached = attached  # True if attached to microtubule, False otherwise
-        self.position = start_position * 8e-9
+        self.position = start_position * 8.1e-9
         self.T = T  # Temperature [K]
     def bind_ATP(self):
         if self.nucleotide_state == 'free':
@@ -31,10 +31,8 @@ class Head:
             self.nucleotide_state = 'ADP'
             self.attached = False
     def move(self):
-        # Start from current position, not zero
-        x_values, iterations = evolution_viscous(self.position, gamma_motor, dt, duration, R_cargo, eta, self.T)
-        # Update position to the final value from the trajectory
-        self.position = x_values[-1]
+        x_values, iterations = evolution_viscous(0, gamma_motor, dt, duration, R_cargo, eta, self.T)
+        self.position += 16.2e-9
         return x_values, iterations
     def attach(self):
         self.attached = True
@@ -64,7 +62,8 @@ def evolution(head_front, head_back, ATP_concentration, downsample_factor=1000):
         if head_front.nucleotide_state == 'free' and head_back.nucleotide_state == 'ADP':
             running = True
             k_ATP = 100
-            wait_time = np.random.exponential(1/k_ATP)
+            rng_atp = np.random.default_rng(ATP_concentration)
+            wait_time = rng_atp.exponential(1/k_ATP)
             time += wait_time
             head_front.bind_ATP()
 
@@ -92,7 +91,7 @@ def evolution(head_front, head_back, ATP_concentration, downsample_factor=1000):
             all_times.extend(step_times)
             
             # After step completion: cargo jumps forward by 8nm (typical kinesin step size)
-            step_size = 8e-9  # 8 nm forward step
+            step_size = 8.1e-9  # 8 nm forward step
             cargo_position += step_size
             
             # Add a point showing the jump (instantaneous step)
@@ -122,17 +121,16 @@ temperatures = [200, 300, 400]  # K
 colors = ['b', 'r', 'g']
 labels = ['T = 200 K', 'T = 300 K', 'T = 400 K']
 
-plt.figure(figsize=(12, 7))
+plt.figure(figsize=(12, 7), facecolor='#DBF0F2')
 
 for T, color, label in zip(temperatures, colors, labels):
     print(f"\n{'='*60}")
     print(f"Running simulation at T = {T} K...")
-    
     # Create new heads for each temperature
     head_front = Head('free', True, 1, T=T)
     head_back = Head('ADP', False, 0, T=T)
     
-    time, position, x_values, t_values, avg_search_time, std_search_time = evolution(head_front, head_back, 50)
+    time, position, x_values, t_values, avg_search_time, std_search_time = evolution(head_front, head_back, 250)
     
     print(f"\nResults for T = {T} K:")
     print(f"  Final position: {position*1e9:.2f} nm")
@@ -145,11 +143,16 @@ for T, color, label in zip(temperatures, colors, labels):
     # Plot trajectory for this temperature
     plt.plot(t_values, x_values*1e9, '-', color=color, linewidth=0.5, label=label, alpha=0.7)
 
-plt.title('Kinesin Position vs Time at Different Temperatures')
-plt.xlabel('Time (s)')
-plt.ylabel('Position (nm)')
+plt.title('Kinesin Position vs Time', fontsize=16)
+plt.xlabel('Time (s)', fontsize=16)
+plt.ylabel('Position (nm)', fontsize=16)
 plt.grid(True, alpha=0.3)
-plt.legend()
+plt.legend(
+    fontsize=12,          # increase legend text size
+    frameon=True,         # make sure legend box is visible
+    facecolor='#DBF0F2',  # background color
+    edgecolor='black'     # optional: legend border color
+)
 plt.tight_layout()
 plt.show()
 

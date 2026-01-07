@@ -8,15 +8,14 @@ gamma_motor = 6 * np.pi * R * eta  # Drag coefficient of the motor head.
 # Cargo parameters
 R_cargo = 50e-9  # Radius of the cargo [m] - typical vesicle size 50-100 nm
 gamma_cargo = 6 * np.pi * R_cargo * eta  # Drag coefficient of the cargo.
-gamma = gamma_motor + gamma_cargo  # Total drag coefficient
-
+gamma = gamma_motor
 rho = 2e3  # Density of the particle [kg/m^3]
 m = 4 * np.pi / 3 * rho * R ** 3  # Mass of the particle [kg].
 
 tau = m / gamma  # Momentum relaxation time.
 
 dt = 1e-12  # Time step [s].
-duration = 10e-6  # Total time [s].
+duration = 5e-6  # Total time [s].
 
 
 
@@ -35,31 +34,15 @@ def binding_force(x, kBT=4.11e-21):
     sigma = 1e-9/2
     xpos = 16e-9
     x = x- xpos
+    x_back = x + 3*xpos/2
+    kBT = 4.11e-21
     U = 16*kBT
-    return -U*x/(sigma**2)*np.exp(-x**2/ (2*sigma**2))
+    return -U*x/(sigma**2)*np.exp(-x**2/ (2*sigma**2)) + -U*x_back/(sigma**2)*np.exp(-x_back**2/ (2*sigma**2))
+
 
 def cargo_load_force(R_cargo, eta):
+    return 0.5e-12
 
-
-    if R_cargo == 0:
-        return 0.0
-    
-    gamma_cargo = 6 * np.pi * R_cargo * eta
-    
-    # Use a velocity scale that gives physically reasonable forces
-    # For 50 nm cargo: gamma_cargo ~ 9.4e-10 N·s/m
-    # To get ~0.5 pN load: need v ~ 0.5e-12 / 9.4e-10 ~ 0.5 mm/s
-    # This represents effective velocity during stepping motion
-    v_effective = 0.5e-3  # 0.5 mm/s = 500 μm/s
-    
-    F_load = -gamma_cargo * v_effective
-    
-    return F_load
-
-#x_grid = np.linspace(-5*1e-9/2, 50*1e-9/2, 500)
-
-#plt.plot(x_grid, binding_force(x_grid)+spring_force(x_grid))
-#plt.show()
 
 
 def evolution_viscous(x0, gamma, dt, duration, R_cargo=50e-9, eta=1e-3, T=298.0):
@@ -95,8 +78,8 @@ def evolution_viscous(x0, gamma, dt, duration, R_cargo=50e-9, eta=1e-3, T=298.0)
     
     x[0] = x0
     x_eq = 16e-9
-    stable_time = 5e-9
-    eps = 3e-10
+    stable_time = 5e-6
+    eps = 4e-10
 
     stable_steps_required = int(stable_time / dt)
     #stable_steps_required = 10
@@ -111,7 +94,48 @@ def evolution_viscous(x0, gamma, dt, duration, R_cargo=50e-9, eta=1e-3, T=298.0)
             stable_counter = 0
         
         # Stop when condition met
-        if stable_counter >= stable_steps_required:
-            print(f"Stopped early at t = {i*dt:.3e} s.")
-            return x[:i+2], i
+        #if stable_counter >= stable_steps_required:
+            #print(f"Stopped early at t = {i*dt:.3e} s.")
+            #return x[:i+2], i
+    print('Max time elapsed')
     return x, i
+plt.figure(figsize=(7, 7), facecolor='#DBF0F2')
+
+for j in range(10):
+    T = 600
+    x , i = evolution_viscous(0, gamma, dt, duration, R_cargo, eta, T)
+    time = np.linspace(0, i, i+2)
+    plt.plot(time*dt*10e2, x, color = 'r', alpha = 0.5)
+plt.xlabel('Time (ms)')
+plt.ylabel('x (m)')
+plt.title('T = 600K')
+
+plt.show()
+
+plt.figure(figsize=(7,7), facecolor='#DBF0F2')
+for j in range(10):
+    T = 300
+    x , i = evolution_viscous(0, gamma, dt, duration, R_cargo, eta, T)
+    time = np.linspace(0, i, i+2)
+    plt.plot(time*dt*10e2, x, color = 'g', alpha = 0.5)
+plt.xlabel('Time (ms)')
+plt.ylabel('x (m)')
+plt.title('T = 300K')
+
+
+plt.show()
+
+plt.figure(figsize=(7, 7), facecolor='#DBF0F2')
+for j in range(10):
+    T = 400
+    x , i = evolution_viscous(0, gamma, dt, duration, R_cargo, eta, T)
+    time = np.linspace(0, i, i+2)
+    plt.plot(time*dt*10e2, x, color = 'b', alpha = 0.5)
+plt.xlabel('Time (ms)')
+plt.ylabel('x (m)')
+plt.title('T = 400K')
+
+plt.show()
+
+
+
